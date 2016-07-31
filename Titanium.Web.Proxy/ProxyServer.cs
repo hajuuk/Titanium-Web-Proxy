@@ -115,25 +115,36 @@ namespace Titanium.Web.Proxy
         /// </summary>
         public SslProtocols SupportedSslProtocols { get; set; } = SslProtocols.Tls | SslProtocols.Tls11 | SslProtocols.Tls12 | SslProtocols.Ssl3;
 
+        public bool IsSupportSSL { get; set; }
+
         /// <summary>
         /// Constructor
         /// </summary>
-        public ProxyServer()
+        public ProxyServer(bool SSLsupport = true)
         {
+            IsSupportSSL = SSLsupport;
             //default values
             ConnectionTimeOutSeconds = 120;
-            CertificateCacheTimeOutMinutes = 60;
+
+            if (IsSupportSSL)
+            {
+                CertificateCacheTimeOutMinutes = 60;
+            }
 
             ProxyEndPoints = new List<ProxyEndPoint>();
             tcpConnectionFactory = new TcpConnectionFactory();
             systemProxySettingsManager = new SystemProxyManager();
             firefoxProxySettingsManager = new FireFoxProxySettingsManager();
 
-            RootCertificateName = RootCertificateName ?? "Titanium Root Certificate Authority";
-            RootCertificateIssuerName = RootCertificateIssuerName ?? "Titanium";
+            
+            if (IsSupportSSL)
+            {
+                RootCertificateName = RootCertificateName ?? "Titanium Root Certificate Authority";
+                RootCertificateIssuerName = RootCertificateIssuerName ?? "Titanium";
 
-            certificateCacheManager = new CertificateManager(RootCertificateIssuerName,
-                RootCertificateName);
+                certificateCacheManager = new CertificateManager(RootCertificateIssuerName,
+                    RootCertificateName);
+            }
         }
 
         /// <summary>
@@ -204,31 +215,41 @@ namespace Titanium.Web.Proxy
         /// <param name="endPoint"></param>
         public void SetAsSystemHttpsProxy(ExplicitProxyEndPoint endPoint)
         {
-            ValidateEndPointAsSystemProxy(endPoint);
-
-            if (!endPoint.EnableSsl)
+            if (IsSupportSSL)
             {
-                throw new Exception("Endpoint do not support Https connections");
-            }
+                ValidateEndPointAsSystemProxy(endPoint);
 
-            //clear any settings previously added
-            ProxyEndPoints.OfType<ExplicitProxyEndPoint>().ToList().ForEach(x => x.IsSystemHttpsProxy = false);
+                if (!endPoint.EnableSsl)
+                {
+                    throw new Exception("Endpoint do not support Https connections");
+                }
+
+                //clear any settings previously added
+                ProxyEndPoints.OfType<ExplicitProxyEndPoint>().ToList().ForEach(x => x.IsSystemHttpsProxy = false);
 
 
-            //If certificate was trusted by the machine
-            if (certTrusted)
-            {
-                systemProxySettingsManager.SetHttpsProxy(
-                   Equals(endPoint.IpAddress, IPAddress.Any) | Equals(endPoint.IpAddress, IPAddress.Loopback) ? "127.0.0.1" : endPoint.IpAddress.ToString(),
-                    endPoint.Port);
-            }
+                //If certificate was trusted by the machine
+                if (certTrusted)
+                {
+                    systemProxySettingsManager.SetHttpsProxy(
+                        Equals(endPoint.IpAddress, IPAddress.Any) | Equals(endPoint.IpAddress, IPAddress.Loopback)
+                            ? "127.0.0.1"
+                            : endPoint.IpAddress.ToString(),
+                        endPoint.Port);
+                }
 
-            endPoint.IsSystemHttpsProxy = true;
+                endPoint.IsSystemHttpsProxy = true;
 
 #if !DEBUG
             firefoxProxySettingsManager.AddFirefox();
 #endif
-            Console.WriteLine("Set endpoint at Ip {1} and port: {2} as System HTTPS Proxy", endPoint.GetType().Name, endPoint.IpAddress, endPoint.Port);
+                Console.WriteLine("Set endpoint at Ip {1} and port: {2} as System HTTPS Proxy", endPoint.GetType().Name,
+                    endPoint.IpAddress, endPoint.Port);
+            }
+            else
+            {
+                Console.WriteLine("SSL does not enabled.");
+            }
         }
 
         /// <summary>
@@ -244,7 +265,10 @@ namespace Titanium.Web.Proxy
         /// </summary>
         public void DisableSystemHttpsProxy()
         {
-            systemProxySettingsManager.RemoveHttpsProxy();
+            if (IsSupportSSL)
+            {
+                systemProxySettingsManager.RemoveHttpsProxy();
+            }
         }
 
         /// <summary>
@@ -265,14 +289,20 @@ namespace Titanium.Web.Proxy
                 throw new Exception("Proxy is already running.");
             }
 
-            certTrusted = certificateCacheManager.CreateTrustedRootCertificate().Result;
+            if (IsSupportSSL)
+            {
+                certTrusted = certificateCacheManager.CreateTrustedRootCertificate().Result;
+            }
 
             foreach (var endPoint in ProxyEndPoints)
             {
                 Listen(endPoint);
             }
 
-            certificateCacheManager.ClearIdleCertificates(CertificateCacheTimeOutMinutes);
+            if (IsSupportSSL)
+            {
+                certificateCacheManager.ClearIdleCertificates(CertificateCacheTimeOutMinutes);
+            }
 
             proxyRunning = true;
         }
@@ -304,7 +334,10 @@ namespace Titanium.Web.Proxy
 
             ProxyEndPoints.Clear();
 
-            certificateCacheManager.StopClearIdleCertificates();
+            if (IsSupportSSL)
+            {
+                certificateCacheManager.StopClearIdleCertificates();
+            }
 
             proxyRunning = false;
         }
@@ -420,7 +453,10 @@ namespace Titanium.Web.Proxy
                 Stop();
             }
 
-            certificateCacheManager.Dispose();
+            if (IsSupportSSL)
+            {
+                certificateCacheManager.Dispose();
+            }
         }
     }
 }
